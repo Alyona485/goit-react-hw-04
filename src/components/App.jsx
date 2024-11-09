@@ -1,51 +1,90 @@
-import './App.css';
-import contactsInit from '../contacts.json';
-import ContactList from './ContactList/ContactList';
-import { useEffect, useState } from 'react';
-import SearchBox from './SearchBox/SearchBox';
-import ContactForm from './ContactForm/ContactForm';
+import { useState, useEffect } from "react";
+import s from "./App.module.css";
+import SearchBar from "./SearchBar/SearchBar";
+import ImageGallery from "./ImageGallery/ImageGallery";
+import fetchImageWithUnsplash from "../fetchImageWithUnsplash";
+import LoadMoreBtn from "./LoadMoreBtn/LoadMoreBtn";
+import Loader from "./Loader/Loader";
+import ErrorMessage from "./ErrorMessage/ErrorMessage";
+import ImageModal from "./ImageModal/ImageModal"; // Імпортуємо модальне вікно
 
 function App() {
-  const [contacts, setContacts] = useState(() => {
-    const savedContacts = window.localStorage.getItem('saved-contacts');
-    if (savedContacts !== null) {
-      return JSON.parse(savedContacts);
-    }
-    return contactsInit;
-  });
-  const [searchStr, setSearchStr] = useState('');
+  const [galleryItems, setGalleryItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [loadMore, setLoadMore] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalImageUrl, setModalImageUrl] = useState("");
 
+  // Функція для відкриття модального вікна
+  const openModal = (imageUrl) => {
+    setModalImageUrl(imageUrl);
+    setIsModalOpen(true);
+  };
+
+  // Функція для закриття модального вікна
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setModalImageUrl("");
+  };
+
+  // Функція, що оновлює запит при новому пошуку
+  const handleSearch = (newQuery) => {
+    setQuery(newQuery);
+    setPage(1); // Повертаємося до першої сторінки
+    setGalleryItems([]); // Очищаємо поточні елементи галереї
+  };
+
+  // Функція, що оновлює сторінку при натисканні "Load more"
+  const handleSearchMore = () => {
+    setPage((prevPage) => prevPage + 1);
+  };
+
+  // Виконуємо запит при зміні query або page
   useEffect(() => {
-    window.localStorage.setItem('saved-contacts', JSON.stringify(contacts));
-  }, [contacts]);
+    if (!query) return; // Якщо запит порожній, не виконуємо нічого
 
-  const deleteContact = id => {
-    setContacts(prevContactList =>
-      prevContactList.filter(contact => contact.id !== id)
-    );
-  };
+    const fetchData = async () => {
+      setLoading(true);
+      setErrorMessage("");
 
-  const addContact = contact => {
-    setContacts(prevContactList => {
-      return [...prevContactList, contact];
-    });
-  };
+      try {
+        const params = { page, perPage: 15 };
+        const data = await fetchImageWithUnsplash(query, params);
+
+        setLoadMore(page * 15 < data.total); // Визначаємо, чи є ще сторінки для завантаження
+
+        setGalleryItems((prevItems) =>
+          page === 1 ? data.results : [...prevItems, ...data.results]
+        );
+      } catch (error) {
+        setErrorMessage(error.message || "Failed to fetch images");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [query, page]);
+
   return (
     <>
-      <h1>Phonebook</h1>
-      <ContactForm addContact={addContact} />
-      <SearchBox search={searchStr} handleSearch={setSearchStr} />
-
-      {searchStr === '' ? (
-        <ContactList contacts={contacts} deleteContact={deleteContact} />
-      ) : (
-        <ContactList
-          contacts={contacts.filter(contact => {
-            return contact.name.toLowerCase().includes(searchStr.toLowerCase());
-          })}
-          deleteContact={deleteContact}
-        />
-      )}
+      <SearchBar onSubmit={handleSearch} />
+      {errorMessage && <ErrorMessage>{errorMessage}</ErrorMessage>}
+      <div className={s.gallery_wrapper}>
+        {galleryItems.length > 0 && (
+          <ImageGallery galleryItems={galleryItems} onImageClick={openModal} />
+        )}
+        {loading && <Loader />}
+        {loadMore && <LoadMoreBtn handleSearchMore={handleSearchMore} />}
+      </div>
+      <ImageModal
+        isOpen={isModalOpen}
+        imageUrl={modalImageUrl}
+        onClose={closeModal}
+      />
     </>
   );
 }
